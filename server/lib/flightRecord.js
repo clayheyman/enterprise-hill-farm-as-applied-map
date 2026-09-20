@@ -181,4 +181,4 @@ function maxDate(dates) {
   return valid.length ? new Date(Math.max(...valid.map((d) => d.getTime()))) : null;
 }
 
-module.exports = { summarizeFlightRecords };
+module.exports = { summarizeFlightRecords, MU_TO_ACRE, round };

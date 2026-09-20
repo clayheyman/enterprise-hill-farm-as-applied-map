@@ -96,20 +96,50 @@ page instead of linked, use a Code Block with:
         loading="lazy"></iframe>
 ```
 
-## Known limitation: field boundaries
+## Field boundaries: hand-drawing, or syncing from Talos
 
 Talos's flight-record export doesn't include GPS coordinates or field
 boundary shapes — just a rough street address and an internal "Plot ID"
-that groups rows into the same field. There's a live "Playback" view inside
-the Talos platform that clearly has the real coordinates, but every request
-it makes is cryptographically signed by the app itself, so there's no way
-to pull that data out automatically from the outside.
+that groups rows into the same field. Every request Talos's own web app
+makes to fetch boundary data is cryptographically signed by the app itself,
+so this tool can't call Talos's API directly on its own.
 
-That's why boundaries are hand-drawn in this tool instead — trace a field
-once on the satellite imagery, and (thanks to the Plot ID matching) it's
-remembered automatically from then on. If Talos ever adds a proper KML/
-Shapefile export, that would be a clean addition here (a new file format in
-`server/lib/`), but hand-drawing is the reliable path today.
+**Default: hand-draw once, reuse forever.** Trace a field once on the
+satellite imagery in the review page, and (thanks to Plot ID / field name /
+location matching) it's remembered automatically from then on.
+
+**Faster, if you've captured field boundaries in Talos** (e.g. by walking or
+driving the perimeter with a GPS device and saving it under Talos's "Field
+Management"): use the **"Sync fields from Talos" bookmarklet**. It runs in
+your own browser, already logged into Talos, and reads the boundary data
+straight off Talos's own page — nothing is scraped or signed on this app's
+behalf. See `tools/talos-sync-bookmarklet.js` for exactly what it does and
+why, and `tools/build-bookmarklet.js` for how to (re)generate it after
+changing the sync URL or rotating `FIELD_SYNC_TOKEN`.
+
+**Setting it up (one time):**
+1. In your browser's bookmarks bar, add a new bookmark.
+2. For its URL, paste the long `javascript:...` bookmarklet text (ask
+   Claude for it again any time, or regenerate it yourself with
+   `node tools/build-bookmarklet.js <sync-url> <FIELD_SYNC_TOKEN>` — both
+   values are also in your Render environment variables).
+3. Name it something like "Sync Fields".
+
+**Using it:** open Talos's Field Management page
+(manage.talosagcenter.com → Field Management), then click the bookmark. A
+small banner appears asking you to type anything into Talos's own search
+box (your town, or just "United States") and click Talos's own Search
+button — that one click is unavoidable, since Talos's search box won't
+accept text filled in by a script, only by an actual person typing. Once
+you do that, the bookmarklet automatically reads every field's boundary,
+converts it, and sends it into this app's field library — so any job whose
+field name or address matches picks up the boundary automatically the next
+time you upload a flight record, no drawing required.
+
+This is a reverse-engineered integration against Talos's own (undocumented,
+signed) web app, not an official API, so it could stop working if Talos
+changes their site. If it ever does, hand-drawing boundaries in the review
+page always still works as the fallback.
 
 ## Project layout
 

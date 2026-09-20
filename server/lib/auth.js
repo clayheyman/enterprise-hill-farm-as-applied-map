@@ -72,9 +72,23 @@ function checkPassword(candidate) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// Separate long-lived token (not the login password) used only by the
+// "sync fields from Talos" bookmarklet, since that request comes from
+// Talos's own site (cross-origin) rather than a logged-in browser tab of
+// this app, so it can't rely on the admin session cookie.
+function checkSyncToken(candidate) {
+  const actual = process.env.FIELD_SYNC_TOKEN;
+  if (!actual) return false;
+  const a = Buffer.from(String(candidate || ''));
+  const b = Buffer.from(String(actual));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 module.exports = {
   createSessionCookie,
   clearSessionCookie,
   isAuthenticated,
   checkPassword,
+  checkSyncToken,
 };

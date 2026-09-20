@@ -11,7 +11,7 @@ const auth = require('./lib/auth');
 const store = require('./lib/store');
 const { generateId } = require('./lib/id');
 const { readFirstSheetAsRecords } = require('./lib/xlsx');
-const { summarizeFlightRecords } = require('./lib/flightRecord');
+const { summarizeFlightRecords, MU_TO_ACRE, round } = require('./lib/flightRecord');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -239,6 +239,90 @@ router.delete('/api/admin/field-library/:id', async (req, res) => {
   if (!requireAuthApi(req, res)) return;
   store.deleteFieldLibraryEntry(req.params.id);
   sendJson(res, 200, { ok: true });
+});
+
+// ---- Talos field-boundary sync (bookmarklet) --------------------------
+//
+// The "Sync fields from Talos" bookmarklet runs on manage.talosagcenter.com
+// (while Clay is logged into Talos) and POSTs the field boundaries it reads
+// straight from Talos's own page back to this endpoint. Because that request
+// comes from Talos's origin rather than a logged-in tab of this app, it can't
+// carry our admin session cookie -- so it's gated by a separate long-lived
+// token (FIELD_SYNC_TOKEN) sent as a Bearer header instead, and CORS is opened
+// only for Talos's origin on this one route.
+
+const SYNC_ALLOWED_ORIGIN = 'https://manage.talosagcenter.com';
+
+function withSyncCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', SYNC_ALLOWED_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Vary', 'Origin');
+}
+
+router.add('OPTIONS', '/api/admin/field-library/sync', async (req, res) => {
+  withSyncCors(res);
+  send(res, 204, '');
+});
+
+function isValidPolygon(g) {
+  return (
+    g &&
+    g.type === 'Polygon' &&
+    Array.isArray(g.coordinates) &&
+    Array.isArray(g.coordinates[0]) &&
+    g.coordinates[0].length >= 3 &&
+    g.coordinates[0].every((pt) => Array.isArray(pt) && typeof pt[0] === 'number' && typeof pt[1] === 'number')
+  );
+}
+
+router.post('/api/admin/field-library/sync', async (req, res) => {
+  withSyncCors(res);
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!auth.checkSyncToken(token)) {
+    return sendJson(res, 401, { error: 'Invalid or missing sync token' });
+  }
+
+  const body = await readJsonBody(req);
+  const incoming = Array.isArray(body.fields) ? body.fields : [];
+  if (!incoming.length) return sendJson(res, 400, { error: 'No fields provided' });
+
+  const library = store.listFieldLibrary();
+  let created = 0;
+  let updated = 0;
+
+  incoming.forEach((f, i) => {
+    const name = String(f.name || '').trim();
+    if (!name || !isValidPolygon(f.boundary)) return; // skip anything malformed, don't fail the whole sync
+
+    let entry = library.find((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (!entry) {
+      entry = {
+        id: generateId(),
+        plotId: null,
+        name,
+        location: f.address || null,
+        color: FIELD_COLORS[(library.length + created) % FIELD_COLORS.length],
+        boundary: f.boundary,
+      };
+      library.push(entry);
+      created += 1;
+    } else {
+      entry.boundary = f.boundary;
+      entry.location = f.address || entry.location || null;
+      updated += 1;
+    }
+    // Talos's own API reports area in Chinese "mu" units here too (same
+    // quirk as the flight-record export -- see MU_TO_ACRE in
+    // flightRecord.js), so convert before storing it for display.
+    entry.talosAcres = typeof f.area === 'number' ? round(f.area * MU_TO_ACRE, 2) : entry.talosAcres || null;
+    entry.lastUsedAt = new Date().toISOString();
+    entry.syncedFromTalosAt = new Date().toISOString();
+    store.saveFieldLibraryEntry(entry);
+  });
+
+  sendJson(res, 200, { ok: true, created, updated, total: incoming.length });
 });
 
 // ---- public (client-facing) routes -------------------------------------
