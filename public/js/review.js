@@ -127,7 +127,10 @@
           <input type="text" data-field="${f.fieldId}" class="displayNameInput" value="${escapeHtml(f.displayName)}" style="min-width:160px;" />
         </td>
         <td><input type="color" data-field="${f.fieldId}" class="colorInput" value="${f.color}" /></td>
-        <td>${f.totalAcres}</td>
+        <td>
+          ${f.totalAcres} ac applied
+          ${typeof f.fieldSizeAcres === 'number' ? `<div class="hint" style="font-size:11px;">of ${f.fieldSizeAcres} ac field</div>` : ''}
+        </td>
         <td>${formatAmount(f)}</td>
         <td>${formatRate(f)}</td>
         <td>${f.passCount}</td>
@@ -135,7 +138,7 @@
           <div style="display:flex; flex-direction:column; gap:6px; min-width:170px;">
             <select data-field="${f.fieldId}" class="libraryPicker" style="font-size:13px; padding:4px;">
               <option value="">Pick saved field…</option>
-              ${fieldLibrary.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}
+              ${fieldLibrary.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}${typeof l.talosAcres === 'number' ? ` (${l.talosAcres} ac)` : ''}</option>`).join('')}
             </select>
             <button class="btn ${f.boundary ? 'ghost' : 'gold'}" data-field="${f.fieldId}" data-action="draw" style="padding:6px 12px; font-size:13px;">
               ${f.boundary ? 'Edit boundary ✓' : 'Draw boundary'}
@@ -183,6 +186,7 @@
     const entry = fieldLibrary.find((l) => l.id === libraryId);
     if (!f || !entry || !entry.boundary) return;
     f.boundary = entry.boundary;
+    f.fieldSizeAcres = typeof entry.talosAcres === 'number' ? entry.talosAcres : null;
     saveField(f);
     updateFieldLayer(f);
     const layer = findLayer(fieldId);
@@ -310,7 +314,7 @@
     await fetch(`/api/admin/jobs/${jobId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: [{ fieldId: f.fieldId, displayName: f.displayName, color: f.color, boundary: f.boundary }] }),
+      body: JSON.stringify({ fields: [{ fieldId: f.fieldId, displayName: f.displayName, color: f.color, boundary: f.boundary, fieldSizeAcres: typeof f.fieldSizeAcres === 'number' ? f.fieldSizeAcres : null }] }),
     });
     flashSaveStatus();
   }

@@ -171,6 +171,12 @@ router.post('/api/admin/upload', async (req, res) => {
         displayName: saved?.name || f.fieldName || f.label,
         color: saved?.color || FIELD_COLORS[i % FIELD_COLORS.length],
         boundary: saved?.boundary || null,
+        // The walked/mapped size of the field itself, from Talos's Field
+        // Management (via the sync bookmarklet) -- distinct from totalAcres
+        // above, which is the acreage actually covered by this job's flights.
+        // The two rarely match exactly (buffers, waterways, partial coverage,
+        // etc.), so both get shown rather than just the one that "wins."
+        fieldSizeAcres: typeof saved?.talosAcres === 'number' ? saved.talosAcres : null,
       };
     }),
   };
@@ -198,6 +204,9 @@ router.put('/api/admin/jobs/:id', async (req, res) => {
       if (typeof patch.color === 'string') f.color = patch.color;
       if (patch.boundary === null || (patch.boundary && patch.boundary.type === 'Polygon')) {
         f.boundary = patch.boundary;
+      }
+      if (typeof patch.fieldSizeAcres === 'number' || patch.fieldSizeAcres === null) {
+        f.fieldSizeAcres = patch.fieldSizeAcres;
       }
     });
   }
@@ -436,6 +445,7 @@ router.get('/api/public/:slug', async (req, res) => {
         taskType: f.taskType,
         crop: f.crop,
         totalAcres: f.totalAcres,
+        fieldSizeAcres: f.fieldSizeAcres || null,
         totalAmount: f.totalAmount,
         totalAmountLb: f.totalAmountLb,
         totalAmountGal: f.totalAmountGal,

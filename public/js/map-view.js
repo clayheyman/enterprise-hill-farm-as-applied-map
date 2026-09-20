@@ -30,7 +30,10 @@
     document.getElementById('fieldTableBody').innerHTML = job.fields.map((f) => `
       <tr>
         <td><span class="swatch" style="background:${f.color}"></span>${escapeHtml(f.displayName)}</td>
-        <td>${f.totalAcres}</td>
+        <td>
+          ${f.totalAcres}
+          ${typeof f.fieldSizeAcres === 'number' ? `<div class="hint" style="font-size:11px;">of ${f.fieldSizeAcres} ac field</div>` : ''}
+        </td>
         <td>${formatAmount(f)}</td>
         <td>${formatRate(f)}</td>
         <td>${f.passCount}</td>
