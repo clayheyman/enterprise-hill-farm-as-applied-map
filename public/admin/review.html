@@ -81,6 +81,22 @@
     </div>
 
     <div class="card">
+      <h2>Flight path image</h2>
+      <p class="hint">
+        Optional — the flight-record export has no GPS track data, so this can't be drawn automatically. Grab it from Talos instead: on the Task History map for this job's date, click "Screenshot" (or export the PDF and save that image), then upload it here to show the client the actual spray/spread pattern.
+      </p>
+      <div id="flightImagePreviewWrap" style="display:none; margin-bottom:12px;">
+        <img id="flightImagePreview" style="max-width:100%; border-radius:8px; display:block;" />
+        <button class="btn ghost" id="removeFlightImageBtn" style="margin-top:8px; padding:6px 12px; font-size:13px;">Remove image</button>
+      </div>
+      <div class="dropzone" id="flightImageDropzone">
+        <div id="flightImageDropzoneText">Drag an image here, or click to choose one</div>
+        <input type="file" id="flightImageInput" accept=".png,.jpg,.jpeg,.webp" />
+      </div>
+      <div class="error-msg" id="flightImageError" style="display:none;"></div>
+    </div>
+
+    <div class="card">
       <h2>Field boundaries</h2>
       <p class="hint">
         Drawing for: <strong id="activeFieldLabel">—</strong>.

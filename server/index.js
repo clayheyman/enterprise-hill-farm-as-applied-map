@@ -6,7 +6,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
-const { Router, sendJson, send, serveStatic, readRawBody, readJsonBody } = require('./lib/http');
+const { Router, sendJson, send, sendFile, serveStatic, readRawBody, readJsonBody } = require('./lib/http');
 const auth = require('./lib/auth');
 const store = require('./lib/store');
 const { generateId } = require('./lib/id');
@@ -16,7 +16,16 @@ const { summarizeFlightRecords, MU_TO_ACRE, round } = require('./lib/flightRecor
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const UPLOADS_DIR = path.join(__dirname, '..', 'data', 'uploads');
+const IMAGES_DIR = path.join(__dirname, '..', 'data', 'flight-images');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+fs.mkdirSync(IMAGES_DIR, { recursive: true });
+
+const IMAGE_MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
 
 const FIELD_COLORS = ['#2e6f40', '#c98a1f', '#2f5f8a', '#8a3f2f', '#6a4f8a', '#3f8a7a', '#8a2f5f', '#5f8a2f'];
 
@@ -198,6 +207,65 @@ router.put('/api/admin/jobs/:id', async (req, res) => {
   sendJson(res, 200, { job });
 });
 
+// A flight-path image (the wavy spray/spread track over the field, like
+// Talos's own map/PDF shows) isn't something the flight-record .xlsx export
+// contains any data for -- it's pixels, not GPS rows. Rather than scrape
+// Talos's own private map for it, this lets Clay attach the picture he
+// already gets from Talos (its "Screenshot" button on the Task History map,
+// or its exported PDF/report) directly to a job, so it can appear on the
+// client-facing map page and PDF alongside the boundary map.
+router.post('/api/admin/jobs/:id/flight-image', async (req, res) => {
+  if (!requireAuthApi(req, res)) return;
+  const job = store.getJob(req.params.id);
+  if (!job) return sendJson(res, 404, { error: 'Job not found' });
+
+  const filename = req.query.filename || 'flight-path.jpg';
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType = IMAGE_MIME_BY_EXT[ext];
+  if (!mimeType) {
+    return sendJson(res, 400, { error: 'Please upload a .png, .jpg, or .webp image.' });
+  }
+
+  const buf = await readRawBody(req, { limit: 15 * 1024 * 1024 });
+  if (!buf.length) return sendJson(res, 400, { error: 'No image data received.' });
+
+  // Remove any previous image for this job before saving the new one.
+  if (job.flightPathImage) {
+    const oldPath = path.join(IMAGES_DIR, job.flightPathImage.storedName);
+    fs.existsSync(oldPath) && fs.unlinkSync(oldPath);
+  }
+
+  const storedName = `${job.id}-${generateId()}${ext}`;
+  fs.writeFileSync(path.join(IMAGES_DIR, storedName), buf);
+
+  job.flightPathImage = { storedName, originalName: filename, mimeType };
+  job.updatedAt = new Date().toISOString();
+  store.saveJob(job);
+  sendJson(res, 200, { job });
+});
+
+router.delete('/api/admin/jobs/:id/flight-image', async (req, res) => {
+  if (!requireAuthApi(req, res)) return;
+  const job = store.getJob(req.params.id);
+  if (!job) return sendJson(res, 404, { error: 'Job not found' });
+  if (job.flightPathImage) {
+    const oldPath = path.join(IMAGES_DIR, job.flightPathImage.storedName);
+    fs.existsSync(oldPath) && fs.unlinkSync(oldPath);
+    job.flightPathImage = null;
+    job.updatedAt = new Date().toISOString();
+    store.saveJob(job);
+  }
+  sendJson(res, 200, { job });
+});
+
+// Authenticated preview of the image on the admin review page.
+router.get('/api/admin/jobs/:id/flight-image/file', async (req, res) => {
+  if (!requireAuthPage(req, res)) return;
+  const job = store.getJob(req.params.id);
+  if (!job || !job.flightPathImage) return send(res, 404, 'Not found');
+  sendFile(res, path.join(IMAGES_DIR, job.flightPathImage.storedName));
+});
+
 router.post('/api/admin/jobs/:id/publish', async (req, res) => {
   if (!requireAuthApi(req, res)) return;
   const job = store.getJob(req.params.id);
@@ -377,8 +445,15 @@ router.get('/api/public/:slug', async (req, res) => {
         color: f.color,
         boundary: f.boundary,
       })),
+      hasFlightImage: !!job.flightPathImage,
     },
   });
+});
+
+router.get('/api/public/:slug/flight-image', async (req, res) => {
+  const job = store.getJobBySlug(req.params.slug);
+  if (!job || job.status !== 'published' || !job.flightPathImage) return send(res, 404, 'Not found');
+  sendFile(res, path.join(IMAGES_DIR, job.flightPathImage.storedName));
 });
 
 // ---- static + fallback --------------------------------------------------

@@ -24,7 +24,66 @@
     }
     render();
     initMap();
+    renderFlightImage();
   }
+
+  function renderFlightImage() {
+    const wrap = document.getElementById('flightImagePreviewWrap');
+    const img = document.getElementById('flightImagePreview');
+    const dropzone = document.getElementById('flightImageDropzone');
+    if (job.flightPathImage) {
+      img.src = `/api/admin/jobs/${jobId}/flight-image/file?t=${Date.now()}`;
+      wrap.style.display = '';
+      dropzone.style.display = 'none';
+    } else {
+      wrap.style.display = 'none';
+      dropzone.style.display = '';
+    }
+  }
+
+  async function uploadFlightImage(file) {
+    const errorEl = document.getElementById('flightImageError');
+    errorEl.style.display = 'none';
+    document.getElementById('flightImageDropzoneText').textContent = `Uploading ${file.name}…`;
+    try {
+      const res = await fetch(`/api/admin/jobs/${jobId}/flight-image?filename=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      job = data.job;
+      renderFlightImage();
+      flashSaveStatus();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+    } finally {
+      document.getElementById('flightImageDropzoneText').textContent = 'Drag an image here, or click to choose one';
+    }
+  }
+
+  const flightImageDropzone = document.getElementById('flightImageDropzone');
+  const flightImageInput = document.getElementById('flightImageInput');
+  flightImageDropzone.addEventListener('click', () => flightImageInput.click());
+  flightImageDropzone.addEventListener('dragover', (e) => { e.preventDefault(); flightImageDropzone.classList.add('dragover'); });
+  flightImageDropzone.addEventListener('dragleave', () => flightImageDropzone.classList.remove('dragover'));
+  flightImageDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    flightImageDropzone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) uploadFlightImage(e.dataTransfer.files[0]);
+  });
+  flightImageInput.addEventListener('change', () => {
+    if (flightImageInput.files.length) uploadFlightImage(flightImageInput.files[0]);
+  });
+  document.getElementById('removeFlightImageBtn').addEventListener('click', async () => {
+    const res = await fetch(`/api/admin/jobs/${jobId}/flight-image`, { method: 'DELETE' });
+    const data = await res.json();
+    job = data.job;
+    renderFlightImage();
+    flashSaveStatus();
+  });
 
   function render() {
     document.getElementById('jobTitleHeading').textContent = job.jobTitle || 'Untitled job';

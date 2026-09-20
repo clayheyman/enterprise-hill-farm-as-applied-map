@@ -47,6 +47,11 @@
         <span class="swatch" style="background:${f.color}"></span>${escapeHtml(f.displayName)} — ${f.totalAcres} ac
       </div>
     `).join('');
+
+    if (job.hasFlightImage) {
+      document.getElementById('flightPathCard').style.display = '';
+      document.getElementById('flightPathImg').src = `/api/public/${slug}/flight-image`;
+    }
   }
 
   function initMap() {

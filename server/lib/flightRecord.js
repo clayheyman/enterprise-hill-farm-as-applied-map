@@ -85,21 +85,81 @@ function summarizeFlightRecords(records) {
   // treating every task/pass as its own field:
   //   1. Plot ID (Talos's own grouping key -- most reliable)
   //   2. Field Name (when Talos did label it)
-  //   3. Location text (same address == almost certainly the same field)
-  //   4. Otherwise, the pass really is on its own.
+  //   3. Nearby-in-time match to an already Plot-ID'd/named field (see below)
+  //   4. Location text (same address == probably the same field)
+  //   5. Otherwise, the pass really is on its own.
+  //
+  // #3 exists because real Talos exports routinely omit the Plot ID (and
+  // Field Name) on the very first battery pass of a field -- the plot only
+  // gets tagged starting with that field's second pass, seemingly because
+  // Talos hasn't "locked on" to the plot boundary yet. Left alone, every one
+  // of these untagged first passes for the day would fall back to the same
+  // generic road-level address and incorrectly merge into one fake extra
+  // field. Since an untagged pass always sits within a few minutes of the
+  // Plot-ID'd block it actually belongs to (it's the same short flying
+  // session, just missing its tag), we attach it to whichever keyed field is
+  // closest to it in time before ever falling back to address matching.
+  const ORPHAN_MERGE_WINDOW_SEC = 20 * 60; // 20 minutes
+
+  function keyFor(p) {
+    if (p.plotId) return `plot:${p.plotId}`;
+    if (p.fieldName) return `name:${p.fieldName.toLowerCase()}`;
+    return null;
+  }
+
+  function timeGapSeconds(a, b) {
+    // Gap between two passes in seconds (0 if they overlap), or null if it
+    // can't be computed because either pass is missing a parsed time range.
+    if (!a.start || !a.end || !b.start || !b.end) return null;
+    if (a.end <= b.start) return (b.start - a.end) / 1000;
+    if (b.end <= a.start) return (a.start - b.end) / 1000;
+    return 0;
+  }
+
+  function nearestKeyedPass(p, keyedPasses, maxGapSec) {
+    let best = null;
+    let bestGap = Infinity;
+    keyedPasses.forEach((k) => {
+      const gap = timeGapSeconds(p, k);
+      if (gap === null || gap > maxGapSec) return;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = k;
+      }
+    });
+    return best;
+  }
+
   const groupOrder = [];
   const groups = new Map();
-  passes.forEach((p) => {
-    let key;
-    if (p.plotId) key = `plot:${p.plotId}`;
-    else if (p.fieldName) key = `name:${p.fieldName.toLowerCase()}`;
-    else if (p.location) key = `loc:${p.location.toLowerCase()}`;
-    else key = `__unassigned_${p.index}`;
+
+  function addToGroup(key, p) {
     if (!groups.has(key)) {
       groups.set(key, []);
       groupOrder.push(key);
     }
     groups.get(key).push(p);
+  }
+
+  // First: every pass Talos did tag with a Plot ID or Field Name goes
+  // straight into its group, in original (spreadsheet) row order.
+  passes.forEach((p) => {
+    const key = keyFor(p);
+    if (key) addToGroup(key, p);
+  });
+
+  // Then: for every untagged pass, look for the nearest-in-time keyed
+  // field and join it there; only fall back to address/standalone grouping
+  // when no keyed field is close enough in time to be a plausible match.
+  const keyedPasses = passes.filter((p) => keyFor(p));
+  passes.forEach((p) => {
+    if (keyFor(p)) return; // already grouped above
+    const nearest = nearestKeyedPass(p, keyedPasses, ORPHAN_MERGE_WINDOW_SEC);
+    let key;
+    if (nearest) key = keyFor(nearest);
+    else if (p.location) key = `loc:${p.location.toLowerCase()}`;
+    else key = `__unassigned_${p.index}`;
+    addToGroup(key, p);
   });
 
   const fields = groupOrder.map((key, i) => {
