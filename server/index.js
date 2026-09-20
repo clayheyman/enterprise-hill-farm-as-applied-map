@@ -22,6 +22,34 @@ const FIELD_COLORS = ['#2e6f40', '#c98a1f', '#2f5f8a', '#8a3f2f', '#6a4f8a', '#3
 
 const router = new Router();
 
+// ---- field-library matching -------------------------------------------
+//
+// Finds the single best field-library match for a flight-record field.
+// Matching by plotId or fieldName is precise -- those are meant to
+// uniquely identify one field -- but `location` is very often just a
+// generic road-level address shared by several distinct fields (this is
+// especially true for entries synced in from Talos's Field Management,
+// which have no plotId at all). So a location match is only trusted when
+// it uniquely identifies exactly one library candidate; otherwise every
+// field sharing that address would incorrectly collapse onto whichever
+// entry happened to come first, which is exactly the "all fields show the
+// same one boundary" bug this guards against.
+function matchLibraryEntry(library, { plotId, fieldName, location }) {
+  if (plotId) {
+    const byPlot = library.find((l) => l.plotId === plotId);
+    if (byPlot) return byPlot;
+  }
+  if (fieldName) {
+    const byName = library.find((l) => l.name.toLowerCase() === fieldName.toLowerCase());
+    if (byName) return byName;
+  }
+  if (location) {
+    const byLocation = library.filter((l) => l.location && l.location.toLowerCase() === location.toLowerCase());
+    if (byLocation.length === 1) return byLocation[0];
+  }
+  return null;
+}
+
 // ---- auth helpers ------------------------------------------------------
 
 function requireAuthApi(req, res) {
@@ -127,11 +155,7 @@ router.post('/api/admin/upload', async (req, res) => {
     notes: '',
     overall,
     fields: fields.map((f, i) => {
-      const saved =
-        (f.plotId && library.find((l) => l.plotId === f.plotId)) ||
-        (f.fieldName && library.find((l) => l.name.toLowerCase() === f.fieldName.toLowerCase())) ||
-        (f.location && library.find((l) => l.location && l.location.toLowerCase() === f.location.toLowerCase())) ||
-        null;
+      const saved = matchLibraryEntry(library, { plotId: f.plotId, fieldName: f.fieldName, location: f.location });
       return {
         ...f,
         fieldId: generateId(),
@@ -188,11 +212,7 @@ router.post('/api/admin/jobs/:id/publish', async (req, res) => {
   const library = store.listFieldLibrary();
   job.fields.forEach((f) => {
     if (!f.boundary) return;
-    let entry = library.find((l) =>
-      (f.plotId && l.plotId === f.plotId) ||
-      (!f.plotId && l.name === f.displayName) ||
-      (f.location && l.location && l.location.toLowerCase() === f.location.toLowerCase())
-    );
+    let entry = matchLibraryEntry(library, { plotId: f.plotId, fieldName: f.displayName, location: f.location });
     if (!entry) {
       entry = {
         id: generateId(),

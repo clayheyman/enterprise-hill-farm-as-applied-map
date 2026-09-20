@@ -1,6 +1,7 @@
 (function () {
   const jobId = location.pathname.split('/').filter(Boolean).pop();
   let job = null;
+  let fieldLibrary = [];
   let map, drawnItems, drawControl;
   let activeFieldId = null;
 
@@ -8,12 +9,19 @@
   const FIELD_COLORS = ['#2e6f40', '#c98a1f', '#2f5f8a', '#8a3f2f', '#6a4f8a', '#3f8a7a', '#8a2f5f', '#5f8a2f'];
 
   async function init() {
-    const res = await fetch(`/api/admin/jobs/${jobId}`);
-    if (!res.ok) {
+    const [jobRes, libRes] = await Promise.all([
+      fetch(`/api/admin/jobs/${jobId}`),
+      fetch('/api/admin/field-library'),
+    ]);
+    if (!jobRes.ok) {
       document.getElementById('jobTitleHeading').textContent = 'Job not found';
       return;
     }
-    ({ job } = await res.json());
+    ({ job } = await jobRes.json());
+    if (libRes.ok) {
+      ({ fields: fieldLibrary } = await libRes.json());
+      fieldLibrary.sort((a, b) => a.name.localeCompare(b.name));
+    }
     render();
     initMap();
   }
@@ -65,9 +73,15 @@
         <td>${formatRate(f)}</td>
         <td>${f.passCount}</td>
         <td>
-          <button class="btn ${f.boundary ? 'ghost' : 'gold'}" data-field="${f.fieldId}" data-action="draw" style="padding:6px 12px; font-size:13px;">
-            ${f.boundary ? 'Edit boundary ✓' : 'Draw boundary'}
-          </button>
+          <div style="display:flex; flex-direction:column; gap:6px; min-width:170px;">
+            <select data-field="${f.fieldId}" class="libraryPicker" style="font-size:13px; padding:4px;">
+              <option value="">Pick saved field…</option>
+              ${fieldLibrary.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}
+            </select>
+            <button class="btn ${f.boundary ? 'ghost' : 'gold'}" data-field="${f.fieldId}" data-action="draw" style="padding:6px 12px; font-size:13px;">
+              ${f.boundary ? 'Edit boundary ✓' : 'Draw boundary'}
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -98,6 +112,35 @@
     tbody.querySelectorAll('[data-action="draw"]').forEach((el) => {
       el.addEventListener('click', () => setActiveField(el.dataset.field));
     });
+    tbody.querySelectorAll('.libraryPicker').forEach((el) => {
+      el.addEventListener('change', () => {
+        if (el.value) applyLibraryBoundary(el.dataset.field, el.value);
+      });
+    });
+  }
+
+  function applyLibraryBoundary(fieldId, libraryId) {
+    const f = job.fields.find((x) => x.fieldId === fieldId);
+    const entry = fieldLibrary.find((l) => l.id === libraryId);
+    if (!f || !entry || !entry.boundary) return;
+    f.boundary = entry.boundary;
+    saveField(f);
+    updateFieldLayer(f);
+    const layer = findLayer(fieldId);
+    if (layer) map.fitBounds(layer.getBounds(), { maxZoom: 18 });
+    renderFieldTable();
+  }
+
+  function updateFieldLayer(f) {
+    const existing = findLayer(f.fieldId);
+    if (existing) drawnItems.removeLayer(existing);
+    if (!f.boundary) return;
+    const layer = L.geoJSON(f.boundary, {
+      style: { color: f.color, fillColor: f.color, fillOpacity: 0.35, weight: 2 },
+    }).getLayers()[0];
+    layer.fieldId = f.fieldId;
+    layer.bindTooltip(f.displayName, { permanent: false });
+    drawnItems.addLayer(layer);
   }
 
   function setActiveField(fieldId) {
