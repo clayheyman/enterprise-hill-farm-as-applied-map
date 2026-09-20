@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign in — Enterprise Hill Farm Aerial</title>
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="page" style="max-width: 380px; padding-top: 80px;">
+    <div class="card">
+      <h1>Enterprise Hill Farm Aerial</h1>
+      <p class="subtitle">As-applied map tool — sign in to upload a job.</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autofocus required />
+        </div>
+        <button type="submit" class="btn gold" style="width:100%;">Sign in</button>
+        <div class="error-msg" id="errorMsg" style="display:none;"></div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const errorMsg = document.getElementById('errorMsg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.style.display = 'none';
+      const password = document.getElementById('password').value;
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        window.location.href = '/admin';
+      } else {
+        errorMsg.textContent = 'Incorrect password.';
+        errorMsg.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

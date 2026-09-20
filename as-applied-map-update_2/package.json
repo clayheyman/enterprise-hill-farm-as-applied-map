@@ -1,0 +1,16 @@
+{
+  "name": "enterprise-hill-farm-as-applied",
+  "version": "1.0.0",
+  "description": "Upload Talos T60x flight-record exports and generate branded as-applied maps/reports for Enterprise Hill Farm Aerial clients.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {}
+}
